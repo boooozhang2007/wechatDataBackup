@@ -10,6 +10,152 @@
 <body >
 <div id="root"></div>
 
+<!-- LLM Export Extension -->
+<style>
+    .llm-fab { position: fixed; bottom: 20px; right: 20px; z-index: 9999; }
+    .llm-btn { padding: 10px 20px; background-color: #07C160; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif; font-size: 14px; transition: background-color 0.3s; }
+    .llm-btn:hover { background-color: #06ad56; }
+    .llm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 10000; font-family: sans-serif; }
+    .llm-content { background-color: white; margin: 5% auto; padding: 25px; width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .llm-group { margin-bottom: 15px; }
+    .llm-label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; font-size: 14px; }
+    .llm-input, .llm-select, .llm-textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+    .llm-input:focus, .llm-select:focus, .llm-textarea:focus { border-color: #07C160; outline: none; }
+    .llm-actions { text-align: right; margin-top: 20px; }
+    .llm-cancel { padding: 8px 16px; margin-right: 10px; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; color: #333; }
+    .llm-submit { padding: 8px 16px; background-color: #07C160; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .llm-submit:disabled { background-color: #8fdcb4; cursor: not-allowed; }
+</style>
+
+<div class="llm-fab">
+    <button class="llm-btn" onclick="openLLMModal()">🤖 LLM 导出工具</button>
+</div>
+
+<div id="llm-modal" class="llm-modal">
+    <div class="llm-content">
+        <h2 style="margin-top: 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 18px;">导出聊天记录 (LLM训练)</h2>
+        
+        <div class="llm-group">
+            <label class="llm-label">选择联系人 (仅显示前500个): <a href="#" onclick="loadContacts()" style="font-size: 12px; color: #07C160; text-decoration: none;">🔄 刷新列表</a></label>
+            <select id="llm-wxid" class="llm-select">
+                <option value="">-- 导出所有联系人 (慎用) --</option>
+            </select>
+        </div>
+
+        <div class="llm-group">
+            <label class="llm-label">System Prompt:</label>
+            <textarea id="llm-prompt" class="llm-textarea" rows="3">你是一个有用的助手</textarea>
+        </div>
+
+        <div class="llm-group">
+            <label class="llm-label">Bot Role Name (你的角色):</label>
+            <input type="text" id="llm-botname" value="我(训练自己)" class="llm-input">
+            <small style="color: #666; font-size: 12px;">如果是"我(训练自己)"，则你的消息为Assistant，对方为User。</small>
+        </div>
+
+        <div class="llm-group">
+            <label class="llm-label">会话分割间隔 (分钟):</label>
+            <input type="number" id="llm-gap" value="30" class="llm-input">
+        </div>
+
+        <div class="llm-group">
+            <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="llm-clean" checked style="margin-right: 8px;"> 
+                <span>清洗敏感信息 (手机/身份证/邮箱/URL)</span>
+            </label>
+        </div>
+
+        <div class="llm-group">
+            <label class="llm-label">导出文件路径 (.jsonl):</label>
+            <input type="text" id="llm-path" placeholder="D:\wechat_export.jsonl" class="llm-input">
+        </div>
+
+        <div class="llm-actions">
+            <button class="llm-cancel" onclick="closeLLMModal()">关闭</button>
+            <button class="llm-submit" onclick="handleLLMExport()">开始导出</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openLLMModal() {
+        document.getElementById('llm-modal').style.display = 'block';
+        loadContacts();
+    }
+    function closeLLMModal() {
+        document.getElementById('llm-modal').style.display = 'none';
+    }
+
+    async function loadContacts() {
+        const select = document.getElementById('llm-wxid');
+        // Keep the first option (All)
+        select.innerHTML = '<option value="">-- 导出所有联系人 (慎用) --</option>';
+        
+        try {
+            if (!window.go || !window.go.main || !window.go.main.App) {
+                console.log("Wails runtime not ready");
+                return;
+            }
+            
+            // Get contacts, page 1, 500 items
+            const resultStr = await window.go.main.App.GetWechatContactList(1, 500);
+            const result = JSON.parse(resultStr);
+            
+            if (result.Users && result.Users.length > 0) {
+                result.Users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.UserName;
+                    const name = user.ReMark || user.NickName || user.UserName;
+                    option.text = name;
+                    select.appendChild(option);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load contacts", e);
+            const option = document.createElement('option');
+            option.text = "加载失败 (请先在主界面登录)";
+            option.disabled = true;
+            select.appendChild(option);
+        }
+    }
+
+    async function handleLLMExport() {
+        const wxid = document.getElementById('llm-wxid').value;
+        const prompt = document.getElementById('llm-prompt').value;
+        const botName = document.getElementById('llm-botname').value;
+        const gap = parseInt(document.getElementById('llm-gap').value) || 30;
+        const clean = document.getElementById('llm-clean').checked;
+        const path = document.getElementById('llm-path').value;
+
+        if (!path) {
+            alert("请输入导出路径");
+            return;
+        }
+
+        const btn = document.querySelector('.llm-submit');
+        const originalText = btn.innerText;
+        btn.innerText = "导出中...";
+        btn.disabled = true;
+
+        try {
+            const resultStr = await window.go.main.App.ExportLLMData(wxid, prompt, botName, gap, clean, path);
+            const result = JSON.parse(resultStr);
+            if (result.status === "success") {
+                alert("导出成功！");
+                closeLLMModal();
+            } else {
+                alert("导出失败: " + result.result);
+            }
+        } catch (e) {
+            alert("调用失败: " + e);
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+</script>
+
 </body>
 </html>
 
