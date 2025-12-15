@@ -32,3 +32,4 @@ config.json
 wechatDataBackup.exe
 app.log
 app-*.log
+gui1.py

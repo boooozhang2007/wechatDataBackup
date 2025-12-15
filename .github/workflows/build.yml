@@ -1,0 +1,51 @@
+name: Wails Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: 1.21
+  NODE_VERSION: 20
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      # SQLite requires CGO, so we need a C compiler.
+      # Windows runners typically have MinGW/gcc available, but ensuring it is good practice.
+      # If using standard windows-latest, gcc might be available via Strawberry Perl or Chocolatey.
+      
+      - name: Build
+        shell: bash
+        run: |
+          wails build -platform windows/amd64
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wechatDataBackup-windows
+          path: build/bin/wechatDataBackup.exe

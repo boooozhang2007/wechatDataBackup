@@ -877,3 +877,35 @@ func (a *App) GetAppIsShareData() bool {
 	}
 	return false
 }
+
+func (a *App) ExportLLMData(wxid string, systemPrompt string, botRoleName string, splitGapMin int, cleanPii bool, exportPath string) string {
+	if a.provider == nil {
+		return "{\"status\":\"error\", \"result\":\"provider is nil\"}"
+	}
+
+	rawMessages, err := a.provider.ExportRawMessages(wxid)
+	if err != nil {
+		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+	}
+
+	sessions, err := wechat.ConvertToJSONL(rawMessages, systemPrompt, botRoleName, splitGapMin, cleanPii)
+	if err != nil {
+		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+	}
+
+	// Save to file
+	file, err := os.Create(exportPath)
+	if err != nil {
+		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	for _, session := range sessions {
+		if err := encoder.Encode(session); err != nil {
+			return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+		}
+	}
+
+	return "{\"status\":\"success\", \"result\":\"Export successful\"}"
+}
