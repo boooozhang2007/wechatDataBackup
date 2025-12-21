@@ -3,8 +3,10 @@ package wechat
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -21,21 +23,29 @@ type LLMSessionMessage struct {
 	Content string `json:"content"`
 }
 
+// Pre-compiled regex patterns (Go doesn't support lookbehind, use simpler patterns)
+var (
+	rePhone = regexp.MustCompile(`1[3-9]\d{9}`)
+	reEmail = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+	reURL   = regexp.MustCompile(`https?://[^\s<>"{}|\\^\[\]` + "`" + `]+`)
+	reID    = regexp.MustCompile(`[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]`)
+)
+
 func CleanPII(text string) string {
-	// Phone numbers
-	rePhone := regexp.MustCompile(`(?<!\d)1[3-9]\d{9}(?!\d)`)
+	if text == "" {
+		return text
+	}
+	
+	// Phone numbers (Chinese mobile)
 	text = rePhone.ReplaceAllString(text, "[PHONE_REMOVED]")
 
-	// ID cards
-	reID := regexp.MustCompile(`(?<!\d)[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)`)
+	// ID cards (Chinese ID)
 	text = reID.ReplaceAllString(text, "[ID_REMOVED]")
 
 	// Emails
-	reEmail := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
 	text = reEmail.ReplaceAllString(text, "[EMAIL_REMOVED]")
 
 	// URLs
-	reURL := regexp.MustCompile(`(http|https)://[a-zA-Z0-9./?=_-]+`)
 	text = reURL.ReplaceAllString(text, "[URL_REMOVED]")
 
 	return text
@@ -44,9 +54,13 @@ func CleanPII(text string) string {
 func (P *WechatDataProvider) ExportRawMessages(wxid string) ([]LLMMessage, error) {
 	var allMessages []LLMMessage
 
+	if P == nil {
+		return allMessages, fmt.Errorf("provider is nil")
+	}
+
 	// Get contacts for name resolution
-	contactsList, err := P.wechatGetAllContact()
 	contactsMap := make(map[string]string)
+	contactsList, err := P.wechatGetAllContact()
 	if err == nil && contactsList != nil {
 		for _, contact := range contactsList.Users {
 			name := contact.ReMark
@@ -61,19 +75,24 @@ func (P *WechatDataProvider) ExportRawMessages(wxid string) ([]LLMMessage, error
 	}
 
 	for _, msgDB := range P.msgDBs {
-		if msgDB.db == nil {
+		if msgDB == nil || msgDB.db == nil {
 			continue
 		}
+		
+		// Escape wxid to prevent SQL injection
 		query := "SELECT StrTalker, StrContent, CreateTime, IsSender FROM MSG WHERE Type = 1"
 		if wxid != "" {
-			query += fmt.Sprintf(" AND StrTalker = '%s'", wxid)
+			safeWxid := strings.ReplaceAll(wxid, "'", "''")
+			query += fmt.Sprintf(" AND StrTalker = '%s'", safeWxid)
 		}
 
 		rows, err := msgDB.db.Query(query)
 		if err != nil {
+			log.Printf("LLM Export query error: %v", err)
 			continue // Skip if error
 		}
-		defer rows.Close()
+		// Don't use defer inside a loop, it will stack up and only close at function exit
+		// defer rows.Close()
 
 		for rows.Next() {
 			var talkerID string
@@ -105,6 +124,7 @@ func (P *WechatDataProvider) ExportRawMessages(wxid string) ([]LLMMessage, error
 				IsSender:  isSender,
 			})
 		}
+		rows.Close()
 	}
 
 	sort.Slice(allMessages, func(i, j int) bool {
