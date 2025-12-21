@@ -116,8 +116,8 @@
         try {
             if (!checkRuntime()) return;
             
-            // Get contacts, page 1, 500 items
-            const resultStr = await window.go.main.App.GetWechatContactList(1, 500);
+            // Get contacts, page 0 (start from 0), 500 items
+            const resultStr = await window.go.main.App.GetWechatContactList(0, 500);
             console.log("Contacts loaded:", resultStr ? "Success" : "Empty");
             
             let result;
