@@ -879,33 +879,53 @@ func (a *App) GetAppIsShareData() bool {
 }
 
 func (a *App) ExportLLMData(wxid string, systemPrompt string, botRoleName string, splitGapMin int, cleanPii bool, exportPath string) string {
+	response := make(map[string]string)
+
 	if a.provider == nil {
-		return "{\"status\":\"error\", \"result\":\"provider is nil\"}"
+		response["status"] = "error"
+		response["result"] = "请先在主界面登录微信"
+		jsonBytes, _ := json.Marshal(response)
+		return string(jsonBytes)
 	}
 
 	rawMessages, err := a.provider.ExportRawMessages(wxid)
 	if err != nil {
-		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+		response["status"] = "error"
+		response["result"] = fmt.Sprintf("读取消息失败: %v", err)
+		jsonBytes, _ := json.Marshal(response)
+		return string(jsonBytes)
 	}
 
 	sessions, err := wechat.ConvertToJSONL(rawMessages, systemPrompt, botRoleName, splitGapMin, cleanPii)
 	if err != nil {
-		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+		response["status"] = "error"
+		response["result"] = fmt.Sprintf("转换数据失败: %v", err)
+		jsonBytes, _ := json.Marshal(response)
+		return string(jsonBytes)
 	}
 
 	// Save to file
 	file, err := os.Create(exportPath)
 	if err != nil {
-		return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+		response["status"] = "error"
+		response["result"] = fmt.Sprintf("创建文件失败: %v", err)
+		jsonBytes, _ := json.Marshal(response)
+		return string(jsonBytes)
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	for _, session := range sessions {
 		if err := encoder.Encode(session); err != nil {
-			return fmt.Sprintf("{\"status\":\"error\", \"result\":\"%v\"}", err)
+			response["status"] = "error"
+			response["result"] = fmt.Sprintf("写入文件失败: %v", err)
+			jsonBytes, _ := json.Marshal(response)
+			return string(jsonBytes)
 		}
 	}
 
-	return "{\"status\":\"success\", \"result\":\"Export successful\"}"
+	response["status"] = "success"
+	response["result"] = "导出成功"
+	jsonBytes, _ := json.Marshal(response)
+	return string(jsonBytes)
 }
