@@ -44,7 +44,8 @@
         
         <div class="llm-group">
             <label class="llm-label">选择联系人 (仅显示前500个): <a href="#" onclick="loadContacts()" style="font-size: 12px; color: #07C160; text-decoration: none;">🔄 刷新列表</a></label>
-            <select id="llm-wxid" class="llm-select">
+            <input type="text" id="llm-search" placeholder="🔍 搜索联系人..." class="llm-input" style="margin-bottom: 8px;" oninput="filterContacts()">
+            <select id="llm-wxid" class="llm-select" size="8" style="height: auto;">
                 <option value="">-- 导出所有联系人 (慎用) --</option>
             </select>
         </div>
@@ -108,9 +109,10 @@
         document.getElementById('llm-modal').style.display = 'none';
     }
 
+    let allContacts = [];
+
     async function loadContacts() {
         const select = document.getElementById('llm-wxid');
-        // Keep the first option (All)
         select.innerHTML = '<option value="">-- 导出所有联系人 (慎用) --</option>';
         
         try {
@@ -129,13 +131,8 @@
             }
             
             if (result.Users && result.Users.length > 0) {
-                result.Users.forEach(user => {
-                    const option = document.createElement('option');
-                    option.value = user.UserName;
-                    const name = user.ReMark || user.NickName || user.UserName;
-                    option.text = name;
-                    select.appendChild(option);
-                });
+                allContacts = result.Users;
+                renderContacts(allContacts);
             } else {
                 const option = document.createElement('option');
                 option.text = "(未找到联系人，请先登录)";
@@ -149,6 +146,39 @@
             option.disabled = true;
             select.appendChild(option);
         }
+    }
+
+    function renderContacts(contacts) {
+        const select = document.getElementById('llm-wxid');
+        // Save current selection if any
+        const currentVal = select.value;
+        
+        select.innerHTML = '<option value="">-- 导出所有联系人 (慎用) --</option>';
+        
+        contacts.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.UserName;
+            const name = user.ReMark || user.NickName || user.UserName;
+            option.text = name;
+            select.appendChild(option);
+        });
+
+        // Restore selection if still in list
+        if (currentVal) {
+            select.value = currentVal;
+        }
+    }
+
+    function filterContacts() {
+        const input = document.getElementById('llm-search');
+        const filter = input.value.toLowerCase();
+        
+        const filtered = allContacts.filter(user => {
+            const name = user.ReMark || user.NickName || user.UserName;
+            return name.toLowerCase().includes(filter);
+        });
+        
+        renderContacts(filtered);
     }
 
     async function handleLLMExport() {

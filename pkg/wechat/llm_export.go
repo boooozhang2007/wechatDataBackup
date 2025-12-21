@@ -61,6 +61,9 @@ func (P *WechatDataProvider) ExportRawMessages(wxid string) ([]LLMMessage, error
 	}
 
 	for _, msgDB := range P.msgDBs {
+		if msgDB.db == nil {
+			continue
+		}
 		query := "SELECT StrTalker, StrContent, CreateTime, IsSender FROM MSG WHERE Type = 1"
 		if wxid != "" {
 			query += fmt.Sprintf(" AND StrTalker = '%s'", wxid)
